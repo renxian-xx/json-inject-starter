@@ -14,6 +14,7 @@ import pers.renxian.jsoninject.annotation.JsonInject;
 import javax.servlet.ServletInputStream;
 import java.io.IOException;
 import java.lang.reflect.Method;
+import java.lang.reflect.Type;
 
 /**
  * JsonInject参数解析器
@@ -48,7 +49,7 @@ public class JsonInjectResolver implements HandlerMethodArgumentResolver {
         // 获取ServletWebRequest对象
         ServletWebRequest request = (ServletWebRequest) webRequest;
         // 获取方法参数的类型
-        Class<?> type = parameter.getParameterType();
+        Type type = parameter.getGenericParameterType();
 
         // 从请求属性中获取已解析的JSON对象，如果不存在则解析请求体中的JSON
         JSONObject json;
