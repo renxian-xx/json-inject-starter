@@ -1,20 +1,31 @@
 package pers.renxian.jsoninject;
 
 import com.alibaba.fastjson.JSONObject;
+import org.springframework.core.Conventions;
 import org.springframework.core.MethodParameter;
+import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.stereotype.Component;
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.annotation.ValidationAnnotationUtils;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.WebDataBinder;
 import org.springframework.web.bind.support.WebDataBinderFactory;
 import org.springframework.web.context.request.NativeWebRequest;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.method.support.ModelAndViewContainer;
+import org.springframework.web.servlet.mvc.method.annotation.AbstractMessageConverterMethodArgumentResolver;
 import pers.renxian.jsoninject.annotation.JsonField;
 import pers.renxian.jsoninject.annotation.JsonInject;
 
 import javax.servlet.ServletInputStream;
 import java.io.IOException;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;
+import java.util.List;
 
 /**
  * JsonInject参数解析器
@@ -22,7 +33,7 @@ import java.lang.reflect.Type;
  * 支持两种模式：WHOLE（整个JSON对象）和PART（部分JSON对象）。
  */
 @Component
-public class JsonInjectResolver implements HandlerMethodArgumentResolver {
+public class JsonInjectResolver extends AbstractMessageConverterMethodArgumentResolver {
 
     /**
      * JsonInject的请求属性名称
@@ -38,6 +49,11 @@ public class JsonInjectResolver implements HandlerMethodArgumentResolver {
      */
     private static final String Key = "json";
 
+    public JsonInjectResolver(List<HttpMessageConverter<?>> converters) {
+        super(converters);
+    }
+
+
     @Override
     public boolean supportsParameter(MethodParameter parameter) {
         // 检查方法参数是否有@JsonInject注解
@@ -46,6 +62,29 @@ public class JsonInjectResolver implements HandlerMethodArgumentResolver {
 
     @Override
     public Object resolveArgument(MethodParameter parameter, ModelAndViewContainer mavContainer, NativeWebRequest webRequest, WebDataBinderFactory binderFactory) throws Exception {
+        parameter = parameter.nestedIfOptional();
+        Object arg = readWithMessageConverters(webRequest, parameter, parameter.getNestedGenericParameterType());
+        // 参照@RequestBody的处理方式，进行数据绑定和验证
+        String name = Conventions.getVariableNameForParameter(parameter);
+
+        if (binderFactory != null) {
+            WebDataBinder binder = binderFactory.createBinder(webRequest, arg, name);
+            if (arg != null) {
+                validateIfApplicable(binder, parameter);
+                if (binder.getBindingResult().hasErrors() && isBindExceptionRequired(binder, parameter)) {
+                    throw new MethodArgumentNotValidException(parameter, binder.getBindingResult());
+                }
+            }
+            if (mavContainer != null) {
+                mavContainer.addAttribute(BindingResult.MODEL_KEY_PREFIX + name, binder.getBindingResult());
+            }
+        }
+
+        return adaptArgumentIfNecessary(arg, parameter);
+    }
+
+    @Override
+    protected <T> Object readWithMessageConverters(NativeWebRequest webRequest, MethodParameter parameter, Type paramType) throws IOException, HttpMediaTypeNotSupportedException, HttpMessageNotReadableException {
         // 获取ServletWebRequest对象
         ServletWebRequest request = (ServletWebRequest) webRequest;
         // 获取方法参数的类型
@@ -64,12 +103,13 @@ public class JsonInjectResolver implements HandlerMethodArgumentResolver {
         JsonInject annotation = method.getAnnotation(JsonInject.class);
         // 获取注解的值，决定注入模式
         JsonInjectMode mode = annotation.value();
+        // 返回对象默认为null
+        Object arg = null;
         // 如果模式是WHOLE，则直接返回整个JSON对象
         if (mode == JsonInjectMode.WHOLE) {
-            return json.getObject(Key, type);
-        }
-        // 如果模式是PART，则根据注解或参数名获取特定字段的值
-        if (mode == JsonInjectMode.PART) {
+            arg = json.getObject(Key, type);
+        } else if (mode == JsonInjectMode.PART) {
+            // 如果模式是PART，则根据注解或参数名获取特定字段的值
             String name;
             JsonField field;
             json = json.getJSONObject(Key);
@@ -78,13 +118,13 @@ public class JsonInjectResolver implements HandlerMethodArgumentResolver {
                 name = field.value();
             else
                 name = parameter.getParameterName();
-            // 如果JSON对象中不存在该字段，则返回null
-            if (json == null || !json.containsKey(name))
-                return null;
-            // 返回指定字段的值，转换为方法参数的类型
-            return json.getObject(name, type);
+            // 如果JSON对象中存在该字段，进行解析并返回
+            if (json != null && json.containsKey(name)) {
+                // 返回指定字段的值，转换为方法参数的类型
+                arg = json.getObject(name, type);
+            }
         }
-        return null;
+        return arg;
     }
 
     /**
