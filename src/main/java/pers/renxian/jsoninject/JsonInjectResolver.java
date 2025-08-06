@@ -7,14 +7,12 @@ import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.stereotype.Component;
 import org.springframework.validation.BindingResult;
-import org.springframework.validation.annotation.ValidationAnnotationUtils;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.WebDataBinder;
 import org.springframework.web.bind.support.WebDataBinderFactory;
 import org.springframework.web.context.request.NativeWebRequest;
 import org.springframework.web.context.request.ServletWebRequest;
-import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.method.support.ModelAndViewContainer;
 import org.springframework.web.servlet.mvc.method.annotation.AbstractMessageConverterMethodArgumentResolver;
 import pers.renxian.jsoninject.annotation.JsonField;
@@ -22,7 +20,6 @@ import pers.renxian.jsoninject.annotation.JsonInject;
 
 import javax.servlet.ServletInputStream;
 import java.io.IOException;
-import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;
 import java.util.List;
@@ -132,7 +129,7 @@ public class JsonInjectResolver extends AbstractMessageConverterMethodArgumentRe
      *
      * @param stream ServletInputStream对象
      * @return 读取的JSON字符串
-     * @throws IOException 如果读取过程中发生错误
+     * @throws IOException IO异常
      */
     private static String getJsonString(ServletInputStream stream) throws IOException {
         byte[] bytes = new byte[2048];
